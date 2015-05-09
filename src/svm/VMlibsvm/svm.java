@@ -128,7 +128,7 @@ class Cache {
 //
 abstract class QMatrix {
 	abstract float[] get_Q(int column, int len);
-	abstract double[] get_QD();
+	abstract VirtualMatrix get_QD();
 	abstract void swap_index(int i, int j);
 };
 
@@ -143,7 +143,7 @@ abstract class Kernel extends QMatrix {
 	private final double coef0;
 
 	abstract float[] get_Q(int column, int len);
-	abstract double[] get_QD();
+	abstract VirtualMatrix get_QD();
 
 	void swap_index(int i, int j)
 	{
@@ -182,7 +182,7 @@ abstract class Kernel extends QMatrix {
 		}
 	}
 
-	Kernel(int l, svm_node[][] x_, svm_parameter param)
+	Kernel(int l, VirtualMatrix x_, svm_parameter param)
 	{
 		this.kernel_type = param.kernel_type;
 		this.degree = param.degree;
@@ -1146,41 +1146,51 @@ final class Solver_NU extends Solver
 //
 class SVC_Q extends Kernel
 {
-	private final byte[] y;
+	private final VirtualMatrix y; // 原本 type is byte
 	private final Cache cache;
-	private final double[] QD;
+	private final VirtualMatrix QD; // type is double 長度是 l 一維陣列
 
-	SVC_Q(svm_problem prob, svm_parameter param, byte[] y_)
+	SVC_Q(VirtualMatrix prob, svm_parameter param, VirtualMatrix y_)
 	{
-		super(prob.l, prob.x, param);
-		y = (byte[])y_.clone();
-		cache = new Cache(prob.l,(long)(param.cache_size*(1<<20)));
-		QD = new double[prob.l];
-		for(int i=0;i<prob.l;i++)
-			QD[i] = kernel_function(i,i);
+		super(prob.nSize(), prob, param);
+		int l = prob.nSize();
+		List<Double> y_Row = (List<Double>) y_.getRow(1); 
+		for(int i=0;i<l;i++)
+		{
+			y.alter(y_Row.get(i), 1, i);
+		}
+		
+		cache = new Cache(l,(long)(param.cache_size*(1<<20)));
+		for(int i=0;i<l;i++)
+			QD.alter(kernel_function(i,i), 1, i);
 	}
 
 	float[] get_Q(int i, int len)
 	{
 		float[][] data = new float[1][];
 		int start, j;
+		List<Double> yRow = (List<Double>) y.getRow(1); //原本是 byte
 		if((start = cache.get_data(i,data,len)) < len)
 		{
 			for(j=start;j<len;j++)
-				data[0][j] = (float)(y[i]*y[j]*kernel_function(i,j));
+				data[0][j] = (float)(yRow.get(i)*yRow.get(j)*kernel_function(i,j));
 		}
 		return data[0];
 	}
-	double[] get_QD()
+	VirtualMatrix get_QD()
 	{
 		return QD;
 	}
 	void swap_index(int i, int j)
 	{
+		List<Double> yRow = (List<Double>) y.getRow(1);
+		List<Double> QDRow = (List<Double>) QD.getRow(1);
+		
 		cache.swap_index(i,j);
 		super.swap_index(i,j);
-		do {byte _=y[i]; y[i]=y[j]; y[j]=_;} while(false);
-		do {double _=QD[i]; QD[i]=QD[j]; QD[j]=_;} while(false);
+
+		do {Double _=yRow.get(i); y.alter(yRow.get(j), 1, i); y.alter(_, 1, j);} while(false);
+		do {double _=QDRow.get(i); QD.alter(QDRow.get(j), 1, i); QD.alter(_, 1, j);} while(false);
 	}
 }
 public class svm {
