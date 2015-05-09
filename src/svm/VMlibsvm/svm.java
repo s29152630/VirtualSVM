@@ -1202,19 +1202,22 @@ public class svm {
 	{
 		svm_print_string.print(s);
 	}
-	private static void solve_c_svc(svm_problem prob, svm_parameter param,
-					double[] alpha, Solver.SolutionInfo si,
-					double Cp, double Cn)
+	private static void solve_c_svc(VirtualMatrix prob, svm_parameter param,
+					VirtualMatrix alpha, Solver.SolutionInfo si,
+					double Cp, double Cn, List<Integer> probY)
 	{
-		int l = prob.l;
-		double[] minus_ones = new double[l];
-		byte[] y = new byte[l];
+		int l = prob.mSize();
+		VirtualMatrix minus_ones = new VirtualMatrix(); //一維虛擬矩陣 長度 l
+		VirtualMatrix y = new VirtualMatrix(); //一維虛擬矩陣 長度 l 原本的型態是 byte 資料筆數就算很多，照理說也不會爆掉
+		List<Double> alphaRow = (List<Double>) alpha.getRow(1);
+		List<Double> yRow = (List<Double>) y.getRow(1);
+
 		int i;
 		for(i=0;i<l;i++)
 		{
-			alpha[i] = 0;
-			minus_ones[i] = -1;
-			if(prob.y[i] > 0) y[i] = +1; else y[i] = -1;
+			alphaRow.set(i, (double) 0);
+			minus_ones.alter(-1, 1, i);
+			if(probY.get(i) > 0) yRow.set(i, (double) +1); yRow.set(i, (double) -1);
 		}
 
 		Solver s = new Solver();
@@ -1238,20 +1241,21 @@ public class svm {
 	//
 	static class decision_function
 	{
-		double[] alpha;
+		VirtualMatrix alpha = new VirtualMatrix();
 		double rho;	
 	};
 
 	static decision_function svm_train_one(
-		svm_problem prob, svm_parameter param,
-		double Cp, double Cn)
+		VirtualMatrix prob, svm_parameter param,
+		double Cp, double Cn, List<Integer> y)
 	{
-		double[] alpha = new double[prob.l];
+		int l = prob.mSize();
+		VirtualMatrix alpha = new VirtualMatrix(); //一維虛擬矩陣 長度l
 		Solver.SolutionInfo si = new Solver.SolutionInfo();
 		switch(param.svm_type)
 		{
 			case svm_parameter.C_SVC:
-				solve_c_svc(prob,param,alpha,si,Cp,Cn);
+				solve_c_svc(prob,param,alpha,si,Cp,Cn,y);
 				break;
 		}
 
@@ -1261,19 +1265,20 @@ public class svm {
 
 		int nSV = 0;
 		int nBSV = 0;
-		for(int i=0;i<prob.l;i++)
+		List<Double> alphaRow = (List<Double>) alpha.getRow(1);
+		for(int i=0;i<l;i++)
 		{
-			if(Math.abs(alpha[i]) > 0)
+			if(Math.abs(alphaRow.get(i)) > 0)
 			{
 				++nSV;
-				if(prob.y[i] > 0)
+				if(y.get(i) > 0)
 				{
-					if(Math.abs(alpha[i]) >= si.upper_bound_p)
+					if(Math.abs(alphaRow.get(i)) >= si.upper_bound_p)
 					++nBSV;
 				}
 				else
 				{
-					if(Math.abs(alpha[i]) >= si.upper_bound_n)
+					if(Math.abs(alphaRow.get(i)) >= si.upper_bound_n)
 						++nBSV;
 				}
 			}
@@ -1699,33 +1704,48 @@ public class svm {
 			for(i=0;i<nr_class;i++)
 				for(int j=i+1;j<nr_class;j++)
 				{
-					svm_problem sub_prob = new svm_problem();
+					VirtualMatrix sub_prob = new VirtualMatrix();
 					int si = start[i], sj = start[j];
 					int ci = count[i], cj = count[j];
-					sub_prob.l = ci+cj;
-					sub_prob.x = new svm_node[sub_prob.l][];
-					sub_prob.y = new double[sub_prob.l];
+					List<Integer> sub_probY = new ArrayList<Integer>();
+
+//					sub_prob.l = ci+cj;
+//					sub_prob.x = new svm_node[sub_prob.l][];
+//					sub_prob.y = new double[sub_prob.l];
 					int k;
+					for(i=1;i<=l;i++){
+						List<Double> vMRow = (List<Double>) vM.getRow(perm.getColumnList(i).indexOf(0));
+						for(int j1=1;;j1++){
+							x.alter(vMRow.get(j1), i, j1);
+						}
+					}
+					
 					for(k=0;k<ci;k++)
 					{
-						sub_prob.x[k] = x[si+k];
-						sub_prob.y[k] = +1;
+						List<Double> xRow = (List<Double>) x.getRow(si+k);
+						for(int j1=1;;j1++){
+							sub_prob.alter(xRow.get(j1), k, j1);
+						}
+						sub_probY.set(k, +1);
 					}
 					for(k=0;k<cj;k++)
 					{
-						sub_prob.x[ci+k] = x[sj+k];
-						sub_prob.y[ci+k] = -1;
+						List<Double> xRow = (List<Double>) x.getRow(sj+k);
+						for(int j1=1;;j1++){
+							sub_prob.alter(xRow.get(j1), k, j1);
+						}
+						sub_probY.set(ci+k, -1);
 					}
 
 					if(param.probability == 1)
 					{
 						double[] probAB=new double[2];
-						svm_binary_svc_probability(sub_prob,param,weighted_C[i],weighted_C[j],probAB);
+//						svm_binary_svc_probability(sub_prob,param,weighted_C[i],weighted_C[j],probAB);
 						probA[p]=probAB[0];
 						probB[p]=probAB[1];
 					}
 
-					f[p] = svm_train_one(sub_prob,param,weighted_C[i],weighted_C[j]);
+					f[p] = svm_train_one(sub_prob,param,weighted_C[i],weighted_C[j], sub_probY);
 					for(k=0;k<ci;k++)
 						if(!nonzero[si+k] && Math.abs(f[p].alpha[k]) > 0)
 							nonzero[si+k] = true;

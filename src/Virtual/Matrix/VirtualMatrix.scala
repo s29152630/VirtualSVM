@@ -2,13 +2,18 @@ package Virtual.Matrix
 
 import java.text.SimpleDateFormat
 import java.util.Calendar
+
 import HBase.Helper.HBaseHelper
 import HDFS.Helper.HDFSHelper
+
 import org.apache.hadoop.hbase.util._
 import org.apache.hadoop.hbase.client._
 import org.apache.hadoop.hbase.filter._
+
 import scala.util.Random
+
 import java.io._
+
 import org.apache.hadoop.fs.Path;
 
 class VirtualMatrix() {
@@ -155,6 +160,12 @@ class VirtualMatrix() {
 
     rowList
   }
+  
+  def alter(double1:Double, i:Int, j:Int) {
+  // TODO Auto-generated method stub
+  
+  }
+  
   class getColumn {
     //    var hTable = hb.getHTable("VirtualMatrixRatio")
 
@@ -484,3 +495,4 @@ class VirtualMatrix() {
     result
   }
 }
+
